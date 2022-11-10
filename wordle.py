@@ -17,7 +17,6 @@ QuartSchema(app)
 
 app.config.from_file(f"./etc/{__name__}.toml", toml.load)
 
-
 @dataclasses.dataclass
 class User:
     first_name: str
@@ -91,9 +90,14 @@ async def userAuth( username, password ):
     db = await _get_db()
     # Selection query with raw queries
     # Run the command
+
     sql = "SELECT * FROM user WHERE username= :username AND passwrd= :password"
+    values = {"username": username, "password": password}
+    
     app.logger.debug(sql)
-    result = await db.fetch_one( sql, values = {"username": username, "password": password})
+    app.logger.debug(values)
+    
+    result = await db.fetch_one( sql, values)
     
     # Is the user registered?
     if result:
@@ -110,29 +114,42 @@ async def create_game(data):
     username = dataclasses.asdict(data)
     # Check if username is in the database
     query = "SELECT username FROM user WHERE username =  :username"
+
     app.logger.debug(query)
+    app.logger.debug(username)
+
     valid_user = await db.fetch_one(query, username)
 
     if valid_user:
         # Retrieve User Id from their username
         query = "SELECT userid FROM user WHERE username = :username"
+
         app.logger.debug(query)
+        app.logger.debug(username)
 
         userid = await db.fetch_one(query, username)
             
 
         # Retrive random ID from the answers table
         query = "SELECT answerid FROM answer ORDER BY RANDOM() LIMIT 1"
+
         app.logger.debug(query)
+
         word = await db.fetch_one(query)
 
         # Check if the retrived word is a repeat for the user, and if so grab a new word
         query = "SELECT answerid FROM games WHERE userid = :userid AND answerid = :answerid"
+        values={"userid": userid[0], "answerid": word[0]}
+
         app.logger.debug(query)
-        while await db.fetch_one(query,  values={"userid": userid[0], "answerid": word[0]}
+        app.logger.debug(values)
+
+        while await db.fetch_one(query, values
             ):
             query = "SELECT answerid FROM answer ORDER BY RANDOM() LIMIT 1"
+            
             app.logger.debug(query)
+            
             word = await db.fetch_one(query)
 
         # Create new game with 0 guesses
@@ -163,7 +180,10 @@ async def add_guess(data):
     currGame = dataclasses.asdict(data)
     #checks whether guessed word is the answer for that game
     query = "SELECT * FROM answer as a where (select count(*) from games where gameid = :gameid and answerid = a.answerid)>=1 and a.answord = :word;"
+    
     app.logger.debug(query)
+    app.logger.debug(currGame)
+
     isAnswer= await db.fetch_one(query, currGame)
 
     #is guessed word the answer
@@ -177,23 +197,38 @@ async def add_guess(data):
             )
         except sqlite3.IntegrityError as e:
             abort(404, e)
-        return {"guessedWord":currGame["word"], "Accuracy":u'\u2713'*5},201 #should return correct answer? 
+        return {"guessedWord":currGame["word"], "Accuracy":u'\u2713'*5},201 
+        
+        #should return correct answer? 
     #if 1 then word is valid otherwise it isn't valid and also check if they exceed guess limit
+
     query = "SELECT * from valid_word where valword = :word;"
+    values={"word":currGame["word"]}
+    
     app.logger.debug(query)
-    isValidGuess = await db.fetch_one(query, values={"word":currGame["word"]})
+    app.logger.debug(values)
+    
+    isValidGuess = await db.fetch_one(query,values)
     
     query = "SELECT guesses from game where gameid = :gameid"
+    values={"gameid":currGame["gameid"]}
+
     app.logger.debug(query)
-    guessNum = await db.fetch_one(query, values={"gameid":currGame["gameid"]})
+    app.logger.debug(values)
+
+    guessNum = await db.fetch_one(query,values)
    
     accuracy = ""
     if(isValidGuess is not None and len(isValidGuess) >= 1 and guessNum[0] < 6):
         try: 
             #make a dict mapping each character and its position from the answer
             query = "SELECT answord FROM answer as a, games as g  where g.gameid = :gameid and g.answerid = a.answerid"
+            values={"gameid":currGame["gameid"]}
+
             app.logger.debug(query)
-            answord = await db.fetch_one(query ,values={"gameid":currGame["gameid"]})
+            app.logger.debug(values)
+
+            answord = await db.fetch_one(query ,values)
             ansDict = {}
             for i in range(len(answord[0])):
                 ansDict[answord[0][i]] = i
@@ -236,14 +271,20 @@ async def add_guess(data):
 async def all_games(username):
     db = await _get_db()
     query = "SELECT userid FROM user WHERE username = :username"
+
     app.logger.debug(query)
+    app.logger.debug(username)
 
     userid = await db.fetch_one(query, values={"username":username})
     
     if userid:
         query = "SELECT * FROM game as a where gameid IN (select gameid from games where userid = :userid) and a.gstate = :gstate;"
+        values = {"userid":userid[0],"gstate":"In-progress"}
+
         app.logger.debug(query)
-        games_val = await db.fetch_all(query, values = {"userid":userid[0],"gstate":"In-progress"})
+        app.logger.debug(values)
+
+        games_val = await db.fetch_all(query, values)
         
         if games_val is None or len(games_val) == 0:
             return { "Message": "No Active Games" },406
@@ -257,13 +298,21 @@ async def all_games(username):
 async def my_game(username,gameid):
     db = await _get_db()
     query = "SELECT userid FROM user WHERE username = :username"
+    values={"username":username}
+
     app.logger.debug(query)
-    userid = await db.fetch_one(query, values={"username":username})
+    app.logger.debug(values)
+
+    userid = await db.fetch_one(query,values )
 
     if userid:
         query = "SELECT a.*, b.guesses, b.gstate FROM guess as a, game as b WHERE a.gameid = b.gameid and a.gameid = :gameid"
+        values={"gameid":gameid}
+
         app.logger.debug(query)
-        guess_val = await db.fetch_all(query, values={"gameid":gameid})
+        app.logger.debug(values)
+
+        guess_val = await db.fetch_all(query,values)
 
         if guess_val is None or len(guess_val) == 0:
             
